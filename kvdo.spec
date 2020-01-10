@@ -1,5 +1,5 @@
-%global commit                  a1b364f3fac0a55766db62775157d620913400ba
-%global gittag                  6.1.0.171
+%global commit                  fb4b94f493d4676014780a17d7c92de1c566a22d
+%global gittag                  6.1.0.181
 %global shortcommit             %(c=%{commit}; echo ${c:0:7})
 
 %define spec_release            17
@@ -26,7 +26,7 @@ Source0:        https://github.com/dm-vdo/%{kmod_name}/archive/%{commit}/%{kmod_
 
 Name:		kmod-kvdo
 Version:	%{kmod_driver_version}
-Release:	%{kmod_rpm_release}%{?dist}.1
+Release:	%{kmod_rpm_release}%{?dist}
 Summary:	Kernel Modules for Virtual Data Optimizer
 License:	GPLv2+
 URL:		http://github.com/dm-vdo/kvdo
@@ -201,6 +201,21 @@ install -m 644 -D $PWD/obj/%{kmod_kbuild_dir}/Module.symvers $RPM_BUILD_ROOT/usr
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Sat Jul 21 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.181-17
+- Fixed a bug which would cause kernel panics when a VDO device is stacked on a
+  RAID50 device.
+- Resolves: rhbz#1599668
+- Fixed a bug which could cause data loss when discarding unused portions of a
+  VDO's logical space.
+- Resolves: rhbz#1600058
+- Modified grow physical to fail in the prepare step if the size isn't
+  changing, avoiding a suspend-and-resume cycle.
+- Resolves: rhbz#1600662
+- Fixed a bug which would cause attempts to grow the physical size of a VDO
+  device to fail if the device below the VDO was resized while the VDO was
+  offline.
+- Resolves: rhbz#1591180
+
 * Mon Jun 11 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.171-17
 - Bumped NVR to maintain kABI compatibility.
 - Resolves: rhbz#1578421
