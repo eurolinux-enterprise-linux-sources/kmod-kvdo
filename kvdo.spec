@@ -1,12 +1,12 @@
-%global commit                  be8e141eaa2d5001bb344c9ec9527db6aa133ddd
-%global gittag                  6.1.1.125
+%global commit                  7e17a12d177a2a0fa68d9f490a1cc937ffab9d93
+%global gittag                  6.1.2.41
 %global shortcommit             %(c=%{commit}; echo ${c:0:7})
 %define spec_release            5
 
 %define kmod_name		kvdo
 %define kmod_driver_version	%{gittag}
 %define kmod_rpm_release	%{spec_release}
-%define kmod_kernel_version	3.10.0-862.el7
+%define kmod_kernel_version	3.10.0-1025.el7
 %define kmod_headers_version	%(rpm -qa kernel-devel | sed 's/^kernel-devel-//')
 %define kmod_kbuild_dir		.
 %define kmod_dependencies       %{nil}
@@ -225,6 +225,28 @@ install -m 644 -D $PWD/obj/%{kmod_kbuild_dir}/Module.symvers $RPM_BUILD_ROOT/usr
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Wed Mar 27 2019 - Andy Walsh <awalsh@redhat.com> 6.1.2.41-5
+- Reduced and rate limited error logging in order to avoid kernel soft-lockups.
+  - Resolves: rhbz#1687005
+
+* Tue Mar 19 2019 - Andy Walsh <awalsh@redhat.com> 6.1.2.38-5
+- Fixed more error path memory leaks.
+  - Resolves: rhbz#1609426
+- Rebased to version 6.2.0 of the UDS module
+  - Resolves: rhbz#1637762
+- Improved counting of dedupe timeouts by including in the count queries
+  which are not made due to their being a lack of resources from previous
+  queries taking too long.
+  - Resolves: rhbz#1639898
+- Fixed a NULL pointer dereference if dmeventd registration fails.
+  - Resolves: rhbz#1640794
+- Fixed a bug in the statistics tracking partial I/Os.
+  - Resolves: rhbz#1594406
+- Allowed VDO backing devices to be specified by major:minor device number.
+  - Resolves: rhbz#1637762
+- Suppressed egregious read-only error logging.
+  - Resolves: rhbz#1687005
+
 * Tue Sep 18 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.125-5
 - Adjusted the warning when modules are found during install.
 - Resolves: rhbz#1553420
