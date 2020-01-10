@@ -1,27 +1,27 @@
-%global commit                  fb4b94f493d4676014780a17d7c92de1c566a22d
-%global gittag                  6.1.0.181
+%global commit                  be8e141eaa2d5001bb344c9ec9527db6aa133ddd
+%global gittag                  6.1.1.125
 %global shortcommit             %(c=%{commit}; echo ${c:0:7})
-
-%define spec_release            17
+%define spec_release            5
 
 %define kmod_name		kvdo
 %define kmod_driver_version	%{gittag}
 %define kmod_rpm_release	%{spec_release}
-%define kmod_kernel_version	3.10.0-693.el7
+%define kmod_kernel_version	3.10.0-862.el7
 %define kmod_headers_version	%(rpm -qa kernel-devel | sed 's/^kernel-devel-//')
 %define kmod_kbuild_dir		.
 %define kmod_dependencies       %{nil}
 %define kmod_build_dependencies	%{nil}
 %define kmod_devel_package	0
 
-%{!?dist: %define dist .el7_4}
-
-Source0:        https://github.com/dm-vdo/%{kmod_name}/archive/%{commit}/%{kmod_name}-%{shortcommit}.tar.gz
+Source0:	https://github.com/dm-vdo/%{kmod_name}/archive/%{commit}/%{kmod_name}-%{shortcommit}.tar.gz
 %{nil}
 
 %define findpat %( echo "%""P" )
 %define __find_requires /usr/lib/rpm/redhat/find-requires.ksyms
+%if 0%{?rhel}
+# Fedora has deprecated this.
 %define __find_provides /usr/lib/rpm/redhat/find-provides.ksyms %{kmod_name} %{?epoch:%{epoch}:}%{version}-%{release}
+%endif
 %define sbindir %( if [ -d "/sbin" -a \! -h "/sbin" ]; then echo "/sbin"; else echo %{_sbindir}; fi )
 
 Name:		kmod-kvdo
@@ -31,12 +31,19 @@ Summary:	Kernel Modules for Virtual Data Optimizer
 License:	GPLv2+
 URL:		http://github.com/dm-vdo/kvdo
 BuildRoot:	%(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
-BuildRequires:	kernel-devel >= %{kmod_kernel_version}
-BuildRequires:  redhat-rpm-config
-BuildRequires:  kernel-debug >= %{kmod_kernel_version}
+%if 0%{?fedora}
+# Fedora requires elfutils-libelf-devel, while rhel does not.
+BuildRequires:  elfutils-libelf-devel
+%endif
 BuildRequires:	glibc
+%if 0%{?rhel}
+# Fedora doesn't have abi whitelists.
 BuildRequires:	kernel-abi-whitelists
+%endif
+BuildRequires:	kernel-devel >= %{kmod_kernel_version}
+BuildRequires:  kernel-debug >= %{kmod_kernel_version}
 BuildRequires:  libuuid-devel
+BuildRequires:  redhat-rpm-config
 ExclusiveArch:	x86_64
 ExcludeArch:    s390
 ExcludeArch:    s390x
@@ -72,6 +79,20 @@ block-level deduplication, compression, and thin provisioning.
 
 This package provides the kernel modules for VDO.
 
+%pre
+# During the install, check whether kvdo or uds is loaded.  A warning here
+# indicates that a previous install was not completely removed.  This message
+# is purely informational to the user.
+for module in kvdo uds; do
+  if grep -q "^${module}" /proc/modules; then
+    if [ "${module}" == "kvdo" ]; then
+      echo "WARNING: Found ${module} module previously loaded (Version: $(cat /sys/kvdo/version 2>/dev/null || echo Uknown)).  A reboot is recommended before attempting to use the newly installed module."
+    else
+      echo "WARNING: Found ${module} module previously loaded.  A reboot is recommended before attempting to use the newly installed module."
+    fi
+  fi
+done
+
 %if 0
 
 %package -n kmod-kvdo-firmware
@@ -104,6 +125,7 @@ block-level deduplication, compression, and thin provisioning.
 
 This package provides the development files for VDO.
 
+
 %files -n kmod-kvdo-devel
 %defattr(644,root,root,755)
 /usr/share/kmod-%{kmod_name}/Module.symvers
@@ -125,15 +147,16 @@ fi
 
 %preun
 rpm -ql kmod-kvdo-%{kmod_driver_version}-%{kmod_rpm_release}%{?dist}.$(arch) | grep '\.ko$' > /var/run/rpm-kmod-%{kmod_name}-modules
-
 # Check whether kvdo or uds is loaded, and if so attempt to remove it.  A
-# failure here means there is still something using the module, which should be
-# cleared up before attempting to remove again.
+# failure to unload means there is still something using the module.  To make
+# sure the user is aware, we print a warning with recommended instructions.
 for module in kvdo uds; do
   if grep -q "^${module}" /proc/modules; then
-    modprobe -r ${module}
+    warnMessage="WARNING: ${module} in use.  Changes will take effect after a reboot."
+    modprobe -r ${module} 2>/dev/null || echo ${warnMessage} && /usr/bin/true
   fi
 done
+       
 
 %postun
 modules=( $(cat /var/run/rpm-kmod-%{kmod_name}-modules) )
@@ -148,6 +171,7 @@ printf '%s\n' "${modules[@]}" | %{sbindir}/weak-modules --remove-modules
 
 %prep
 %setup -n %{kmod_name}-%{commit}
+
 %{nil}
 set -- *
 mkdir source
@@ -201,42 +225,105 @@ install -m 644 -D $PWD/obj/%{kmod_kbuild_dir}/Module.symvers $RPM_BUILD_ROOT/usr
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
-* Sat Jul 21 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.181-17
+* Tue Sep 18 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.125-5
+- Adjusted the warning when modules are found during install.
+- Resolves: rhbz#1553420
+
+* Fri Sep 14 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.125-4
+- Attempt to unload modules and print a warning if unable to.
+- Resolves: rhbz#1553420
+- Fixed a hang when recovering a VDO volume with a physical size larger than
+  16TB.
+- Resolves: rhbz#1628316
+
+* Wed Sep 05 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.120-3
+- Rebuilt to work with kernel build
+- Resolves: rhbz#1625555
+
+* Sun Jul 29 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.120-2
+- No longer attempt to unload modules in %preun
+- Resolves: rhbz#1553420
+- Improved memory allocation by not using the incorrect __GFP_NORETRY flag
+  and by using the memalloc_noio_save mechanism.
+- Resolves: rhbz#1571292
+- Fixed a potential deadlock in the UDS index by using the kernel supplied
+  struct callback instead of our own implementation of synchronous
+  callbacks.
+- Resolves: rhbz#1602151
+- Fixed a potential stack overflow when reaping the recovery journal.
+- Resolves: rhbz#1608070
+- No longer attempt to unload modules in %preun
+- Resolves: rhbz#1553420
+- Improved safety around memory allocation permissions
+- Resolves: rhbz#1595923
+- Improved statistics accounting to allow for concurrent dedupe.
+- Resolves: rhbz#1540722
+
+* Sun Jul 15 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.111-1
+- Added support for issuing fullness warnings via dmeventd
+- rhbz#1519307
 - Fixed a bug which would cause kernel panics when a VDO device is stacked on a
   RAID50 device.
-- Resolves: rhbz#1599668
-- Fixed a bug which could cause data loss when discarding unused portions of a
-  VDO's logical space.
-- Resolves: rhbz#1600058
-- Modified grow physical to fail in the prepare step if the size isn't
-  changing, avoiding a suspend-and-resume cycle.
-- Resolves: rhbz#1600662
+- Resolves: rhbz#1593444
+- Improved logging when growing the physical size of a VDO volume.
+- Resolves: rhbz#1597890
+- Resolves: rhbz#1597886
+- Removed misleading log messages when rebuilding the UDS index.
+- Resolves: rhbz#1599867
+
+* Wed Jun 20 2018 - Andy Walsh <awalsh@redhat.com> 6.1.1.99-1
+- Added /sys/kvdo/version which contains the currently loaded version of
+  the kvdo module.
+- Resolves: rhbz#1533950
+- Added logging of normal operation when a VDO device starts normally.
+- Resolves: rhbz#1520988
+- Fixed a race in the UDS module which could cause the index to go offline.
+- Resolves: rhbz#1520988
 - Fixed a bug which would cause attempts to grow the physical size of a VDO
   device to fail if the device below the VDO was resized while the VDO was
   offline.
-- Resolves: rhbz#1591180
+- Resolves: rhbz#1582647
+- Fixed thread safety issues in the UDS page cache.
+- Resolves: rhbz#1579492
+- Modified the vdo script to not allow creation of a VDO device on top of an
+  already running VDO device.
+- Resolves: rhbz#1572640
+- Fixed a bug which could cause data loss when discarding unused portions of a
+  VDO's logical space.
+- Resolves: rhbz#1589249
+- Modified grow physical to fail in the prepare step if the size isn't
+  changing, avoiding a suspend-and-resume cycle.
+- Resolves: rhbz#1576539
 
-* Mon Jun 11 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.171-17
-- Bumped NVR to maintain kABI compatibility.
-- Resolves: rhbz#1578421
-
-* Sat May 19 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.171-16
-- Fixed a bug which prevented disabling of the UDS index.
-- Resolves: rhbz#1578421
-
-* Sun Apr 29 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.168-16
-- Updated source to use GitHub
-- Fixed module version checking for upgrades.
-- Removed debug kernel requirement from spec file.
+* Fri May 11 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.1.84-1
+- Deleted unused UDS features.
+- Improved performance of sub 4K writes.
+- Simplified and improved performance of writes with FUA.
+- Improved the accuracy of dedupe statistics.
+- Made the MurmurHash3 implementation architecture independent.
+- Fixed compilation errors on newer versions of GCC.
+- Eliminated spurious allocation of a UDS sparse cache for dense indexes.
 - Fixed a deadlock resulting from sleeping while holding a spinlock while
   getting statistics.
-- Resolves: rhbz#1567742
-- Fixed bugs arising from attempts to access sysfs nodes during startup and
-  shutdown.
-- Resolves: rhbz#1567744
-- Removed the prepare_ioctl() function to avoid signature changes since this
-  function currently does nothing.
-- Resolves: rhbz#1572494
+- Resvolves: rhbz#1562228
+- Fixed bugs related to the timing of the creation and destruction of sysfs
+  nodes relative to the creation and destruction of VDO data structures.
+- Resolves: rhbz#1559692
+- Fixed a bug which made deduplication impossible to disable.
+- Removed obsolete code.
+- Improved deduplication of concurrent requests containing the same data.
+- Reduced unnecessary logging.
+- Resolves: rhbz#1511127
+- Removed the prepare_ioctl() function to avoid signature changes since
+  this function currently does nothing.
+- Resolves: rhbz#1568129
+- Fixed a bug which made using a sparse index impossible to create.
+- Resolves: rhbz#1570156
+
+* Thu May 10 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.1.24-1
+- Rebased to 6.1.1 branch from github
+- Resolves: rhbz#1576701
+- Improved some error messages
 
 * Tue Feb 27 2018 - Andy Walsh <awalsh@redhat.com> - 6.1.0.153-15
 - Fixed preun handling of loaded modules
